@@ -378,3 +378,20 @@ async fn test_sign_transaction_if_paid() {
     println!("Simulated transaction: {:?}", simulated_tx);
     assert!(simulated_tx.value.err.is_none(), "Transaction simulation failed");
 }
+
+#[tokio::test]
+async fn test_transfer_transaction_action_get() {
+    let client = setup_test_client().await;
+
+    // Send a request to the transferTransactionActionGet method
+    let response: serde_json::Value = client
+        .request("transferTransactionActionGet", rpc_params![])
+        .await
+        .expect("Failed to get transfer transaction action");
+
+    // Assert that the response contains the expected fields
+    assert_eq!(response["title"].as_str().unwrap(), "HackerHouse Events", "Title mismatch");
+    assert_eq!(response["description"].as_str().unwrap(), "Claim your Hackerhouse access token.", "Description mismatch");
+    assert_eq!(response["label"].as_str().unwrap(), "Claim Access Token", "Label mismatch");
+    assert!(response["icon"].as_str().is_some(), "Expected icon URL to be present");
+}

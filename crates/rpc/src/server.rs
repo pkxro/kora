@@ -3,9 +3,10 @@ use jsonrpsee::{
     server::{middleware::proxy_get_request::ProxyGetRequestLayer, ServerBuilder, ServerHandle},
     RpcModule,
 };
-use std::{net::SocketAddr, time::Duration};
+use std::{net::SocketAddr, time::Duration, fs};
 use tower::limit::RateLimitLayer;
 use tower_http::cors::CorsLayer;
+use serde_json::Value;
 
 use crate::rpc::KoraRpc;
 
@@ -100,6 +101,21 @@ fn build_rpc_module(rpc: KoraRpc) -> Result<RpcModule<KoraRpc>, anyhow::Error> {
             let rpc = rpc_context.as_ref();
             let params = rpc_params.parse()?;
             rpc.sign_transaction_if_paid(params).await.map_err(Into::into)
+        },
+    );
+    
+    let _ = module.register_async_method(
+        "transferTransactionActionGet",
+        |_params, _rpc_context| async move {            
+            // Read the JSON file from the ./actions/ directory
+            let data = fs::read_to_string("./actions/transfer_action_data.json")
+                .map_err(|e| anyhow::anyhow!("Failed to read JSON file: {}", e))?;
+            
+            // Parse the JSON data
+            let response: Value = serde_json::from_str(&data)
+                .map_err(|e| anyhow::anyhow!("Failed to parse JSON data: {}", e))?;
+            
+            Ok(response)
         },
     );
 

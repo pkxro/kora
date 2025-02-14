@@ -22,7 +22,7 @@ use crate::method::{
         sign_transaction_if_paid, SignTransactionIfPaidRequest, SignTransactionIfPaidResponse,
     },
     transfer_transaction::{
-        transfer_transaction, TransferTransactionRequest, TransferTransactionResponse,
+        transfer_transaction, TransferTransactionRequest, TransferTransactionResponse as TransferTransactionResponseOld,
     },
 };
 
@@ -89,7 +89,7 @@ impl KoraRpc {
     pub async fn transfer_transaction(
         &self,
         request: TransferTransactionRequest,
-    ) -> Result<TransferTransactionResponse, KoraError> {
+    ) -> Result<TransferTransactionResponseOld, KoraError> {
         info!("Transfer transaction request: {:?}", request);
         let result = transfer_transaction(&self.rpc_client, &self.validation, request).await;
         info!("Transfer transaction response: {:?}", result);
@@ -119,4 +119,5 @@ impl KoraRpc {
         info!("Sign transaction if paid response: {:?}", result);
         result
     }
+
 }
