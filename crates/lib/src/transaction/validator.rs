@@ -1,14 +1,13 @@
 use crate::{
     config::ValidationConfig, error::KoraError,
+    token::{token_keg::TokenKeg, TokenInterface},
     transaction::fees::calculate_token_value_in_lamports,
 };
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{
-    instruction::CompiledInstruction, message::Message, program_pack::Pack, pubkey::Pubkey,
+    instruction::CompiledInstruction, message::Message, pubkey::Pubkey,
     system_instruction, system_program, transaction::Transaction,
 };
-use spl_associated_token_account::get_associated_token_address;
-use spl_token::state::Account as TokenAccount;
 use std::str::FromStr;
 
 use super::TokenPriceInfo;
@@ -225,6 +224,17 @@ impl TransactionValidator {
 
         total
     }
+
+    fn validate_token_instruction(
+        &self,
+        instruction: &CompiledInstruction,
+        keys: &[Pubkey],
+    ) -> Result<(), KoraError> {
+        if *instruction.program_id(keys) != TokenKeg::program_id() {
+            return Ok(());
+        }
+        // ... rest of validation
+    }
 }
 
 pub async fn validate_token_payment(
@@ -238,47 +248,31 @@ pub async fn validate_token_payment(
     let mut total_lamport_value = 0;
 
     for ix in transaction.message.instructions.iter() {
-        if *ix.program_id(&transaction.message.account_keys) != spl_token::id() {
+        if *ix.program_id(&transaction.message.account_keys) != TokenKeg::program_id() {
             continue;
         }
 
-        if let Ok(spl_token::instruction::TokenInstruction::Transfer { amount }) =
-            spl_token::instruction::TokenInstruction::unpack(&ix.data)
-        {
+        if let Ok(amount) = TokenKeg::unpack_transfer_instruction(&ix.data) {
             let dest_pubkey = transaction.message.account_keys[ix.accounts[1] as usize];
             let source_key = transaction.message.account_keys[ix.accounts[0] as usize];
 
-            let source_account = rpc_client
-                .get_account(&source_key)
+            let source_data = TokenKeg::get_token_account_data(rpc_client, &source_key)
                 .await
-                .map_err(|e| KoraError::RpcError(e.to_string()))?;
+                .map_err(|e| KoraError::ValidationError(format!("Invalid source token account: {}", e)))?;
 
-            let token_account = TokenAccount::unpack(&source_account.data).map_err(|e| {
-                KoraError::InvalidTransaction(format!("Invalid token account: {}", e))
-            })?;
+            let dest_ata = TokenKeg::get_associated_account_address(&signer_pubkey, &source_data.mint);
 
-            let dest_mint_account =
-                get_associated_token_address(&signer_pubkey, &token_account.mint);
-
-            if dest_pubkey != dest_mint_account {
+            if dest_pubkey != dest_ata {
                 continue;
             }
 
-            if source_account.owner != spl_token::id() {
-                continue;
-            }
-
-            if token_account.amount < amount {
-                continue;
-            }
-
-            if !validation.allowed_spl_paid_tokens.contains(&token_account.mint.to_string()) {
+            if source_data.amount < amount {
                 continue;
             }
 
             let lamport_value = calculate_token_value_in_lamports(
                 amount,
-                &token_account.mint,
+                &source_data.mint,
                 rpc_client,
                 price_info,
             )
